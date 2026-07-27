@@ -8,6 +8,7 @@ const envSchema = z.object({
   SPOTIFY_REDIRECT_URI: z.string().url().default("http://127.0.0.1:8888/callback"),
   SPOTIFY_REFRESH_TOKEN: z.string().optional(),
   SPOTIFY_PLAYLIST_ID: z.string().optional(),
+  INSTAGRAM_ACCESS_TOKEN: z.string().optional(),
   DATABASE_PATH: z.string().default("./data/vinylpicks.db"),
 });
 

@@ -1,5 +1,13 @@
 import "../config/env.js";
+import { loadEnv } from "../config/env.js";
 import { parseComments } from "../comment-parser/openai-parser.js";
+import {
+  fetchComments,
+  fetchLatestReelMedia,
+  fetchMediaPostedAt,
+  getIgUserId,
+  refreshAccessToken,
+} from "../instagram/instagram-client.js";
 import { rankRecommendations, type RecommendationInput } from "../ranking/rank.js";
 import { logger } from "../shared/logger.js";
 import { getOrCreatePlaylist, replacePlaylistTracks, resolveTrackUris } from "../spotify/spotify-client.js";
@@ -9,11 +17,50 @@ import {
   getReel,
   getUnparsedComments,
   hasReachedStatus,
+  insertComments,
   markCommentsFetched,
   recordPlaylistSync,
   setReelStatus,
+  upsertReel,
   type Reel,
 } from "../storage/repository.js";
+
+/**
+ * Resolves which reel to run the pipeline for. If `reelIdArg` names a reel already in the
+ * database (e.g. one imported via CSV), it's used as-is. Otherwise, when Instagram is
+ * configured, `reelIdArg` is treated as a real Instagram media id to register (or, if omitted
+ * entirely, the account's latest Reel is auto-detected). With no Instagram credentials and no
+ * pre-existing reel, there's nothing to run the pipeline against.
+ */
+async function ensureReelRegistered(reelIdArg: string | undefined): Promise<string> {
+  if (reelIdArg) {
+    const existing = getReel(reelIdArg);
+    if (existing) return existing.id;
+  }
+
+  const env = loadEnv();
+  if (!env.INSTAGRAM_ACCESS_TOKEN) {
+    throw new Error(
+      reelIdArg
+        ? `No reel "${reelIdArg}" found locally, and INSTAGRAM_ACCESS_TOKEN is not set to fetch it live. Import its comments via CSV first.`
+        : "No reel id given and INSTAGRAM_ACCESS_TOKEN is not set. Pass a reel id already imported via CSV, or configure Instagram credentials to auto-detect the latest Reel."
+    );
+  }
+
+  await refreshAccessToken();
+
+  if (reelIdArg) {
+    const postedAt = await fetchMediaPostedAt(reelIdArg);
+    upsertReel(reelIdArg, postedAt);
+    return reelIdArg;
+  }
+
+  const igUserId = await getIgUserId();
+  const { id, postedAt } = await fetchLatestReelMedia(igUserId);
+  upsertReel(id, postedAt);
+  logger.info(`Auto-detected latest Reel: ${id} (posted ${postedAt}).`);
+  return id;
+}
 
 /**
  * Runs every pipeline stage for a single reel, skipping stages the reel has already passed
@@ -41,8 +88,15 @@ export async function runPipelineForReel(reelId: string): Promise<void> {
 
 async function ensureCommentsFetched(reel: Reel): Promise<Reel> {
   if (hasReachedStatus(reel.status, "COMMENTS_FETCHED")) return reel;
-  // Milestone 1: comments already imported via `npm run import:comments` (CSV path).
-  // Milestone 2 will fetch live from the Instagram Graph API here instead.
+
+  const env = loadEnv();
+  if (env.INSTAGRAM_ACCESS_TOKEN) {
+    const comments = await fetchComments(reel.id);
+    const inserted = insertComments(reel.id, comments);
+    logger.info(`Fetched ${comments.length} comment(s) from Instagram for reel "${reel.id}" (${inserted} new).`);
+  }
+  // else: comments assumed already imported via `npm run import:comments` (CSV fallback path).
+
   markCommentsFetched(reel.id);
   setReelStatus(reel.id, "COMMENTS_FETCHED");
   return getReel(reel.id)!;
@@ -96,11 +150,8 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
 }
 
 async function main() {
-  const reelId = process.argv[2];
-  if (!reelId) {
-    logger.error("Usage: npm run pipeline -- <reel-id>");
-    process.exit(1);
-  }
+  const reelIdArg = process.argv[2];
+  const reelId = await ensureReelRegistered(reelIdArg);
   await runPipelineForReel(reelId);
 }
 
