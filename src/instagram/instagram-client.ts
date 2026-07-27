@@ -113,7 +113,7 @@ export async function fetchMediaPostedAt(mediaId: string): Promise<string> {
 
 interface IgCommentItem {
   id: string;
-  text: string;
+  text?: string;
   username?: string;
   timestamp: string;
 }
@@ -136,6 +136,9 @@ export async function fetchComments(mediaId: string): Promise<RawComment[]> {
 
     const data = (await res.json()) as IgCommentsResponse;
     for (const c of data.data) {
+      // Comments with no text (e.g. GIF/sticker-only replies) carry no music-recommendation
+      // signal, so there's nothing useful to store or parse.
+      if (!c.text) continue;
       all.push({ ig_comment_id: c.id, username: c.username ?? "unknown", comment_text: c.text });
     }
     url = data.paging?.next;

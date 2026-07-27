@@ -26,6 +26,14 @@ function getClient(): OpenAI {
   return client;
 }
 
+const NULL_LIKE_VALUES = new Set(["null", "none", "n/a", "na", "unknown", ""]);
+
+/** OpenAI sometimes emits the literal string "Null" instead of JSON null for a missing field. */
+function normalizeNullable(value: string | null): string | null {
+  if (value === null) return null;
+  return NULL_LIKE_VALUES.has(value.trim().toLowerCase()) ? null : value;
+}
+
 /** Parses raw comments into structured {artist, album, song, confidence} via OpenAI structured outputs. */
 export async function parseComments(comments: RecommendationRow[]): Promise<ParsedRecommendation[]> {
   const results: ParsedRecommendation[] = [];
@@ -72,9 +80,9 @@ async function parseBatch(batch: RecommendationRow[]): Promise<ParsedRecommendat
     }
     return {
       ig_comment_id: r.id,
-      artist: r.artist,
-      album: r.album,
-      song: r.song,
+      artist: normalizeNullable(r.artist),
+      album: normalizeNullable(r.album),
+      song: normalizeNullable(r.song),
       confidence: r.confidence,
       is_ambiguous: r.isAmbiguous,
     };
