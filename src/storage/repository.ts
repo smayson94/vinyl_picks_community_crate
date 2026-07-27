@@ -19,6 +19,7 @@ export interface Reel {
   fetched_at: string | null;
   status: ReelStatus;
   last_error: string | null;
+  theme: string | null;
 }
 
 export interface RawComment {
@@ -72,6 +73,10 @@ export function setReelStatus(id: string, status: ReelStatus, lastError: string 
   getDb()
     .prepare(`UPDATE reels SET status = ?, last_error = ? WHERE id = ?`)
     .run(status, lastError, id);
+}
+
+export function setReelTheme(id: string, theme: string | null): void {
+  getDb().prepare(`UPDATE reels SET theme = ? WHERE id = ?`).run(theme, id);
 }
 
 export function markCommentsFetched(id: string): void {

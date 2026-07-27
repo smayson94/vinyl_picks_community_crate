@@ -1,6 +1,6 @@
 import "../config/env.js";
 import { loadEnv } from "../config/env.js";
-import { parseComments } from "../comment-parser/openai-parser.js";
+import { extractCaptionTheme, parseComments } from "../comment-parser/openai-parser.js";
 import {
   extractCaptionPickLines,
   fetchComments,
@@ -23,6 +23,7 @@ import {
   markCommentsFetched,
   recordPlaylistSync,
   setReelStatus,
+  setReelTheme,
   upsertReel,
   type RawComment,
   type Reel,
@@ -107,6 +108,12 @@ async function ensureCommentsFetched(reel: Reel): Promise<Reel> {
         }))
       : [];
 
+    if (caption) {
+      const theme = await extractCaptionTheme(caption);
+      setReelTheme(reel.id, theme);
+      if (theme) logger.info(`Caption theme for reel "${reel.id}": "${theme}".`);
+    }
+
     const inserted = insertComments(reel.id, [...comments, ...captionComments]);
     logger.info(
       `Fetched ${comments.length} comment(s) + ${captionComments.length} caption pick(s) from Instagram for reel "${reel.id}" (${inserted} new).`
@@ -161,7 +168,7 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
     trackUris.length = MAX_PLAYLIST_TRACKS;
   }
 
-  const playlistName = `Vinyl Picks — Week of ${reel.posted_at}`;
+  const playlistName = reel.theme ? `Community Crate - ${reel.theme}` : `Community Crate - Week of ${reel.posted_at}`;
   const playlistId = await getOrCreatePlaylist(playlistName);
   await replacePlaylistTracks(playlistId, trackUris);
   recordPlaylistSync(reel.id, "spotify", playlistId, trackUris.length);

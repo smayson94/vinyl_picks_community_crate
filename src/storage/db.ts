@@ -25,7 +25,8 @@ function runMigrations(db: Database.Database): void {
       posted_at TEXT NOT NULL,
       fetched_at TEXT,
       status TEXT NOT NULL DEFAULT 'NEW',
-      last_error TEXT
+      last_error TEXT,
+      theme TEXT
     );
 
     CREATE TABLE IF NOT EXISTS recommendations (
@@ -54,4 +55,9 @@ function runMigrations(db: Database.Database): void {
       UNIQUE(reel_id, platform)
     );
   `);
+
+  const reelColumns = db.prepare(`PRAGMA table_info(reels)`).all() as { name: string }[];
+  if (!reelColumns.some((c) => c.name === "theme")) {
+    db.exec(`ALTER TABLE reels ADD COLUMN theme TEXT`);
+  }
 }

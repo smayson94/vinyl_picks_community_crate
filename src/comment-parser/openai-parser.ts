@@ -18,6 +18,10 @@ const ParsedBatchSchema = z.object({
   recommendations: z.array(ParsedCommentSchema),
 });
 
+const CaptionThemeSchema = z.object({
+  theme: z.string().nullable(),
+});
+
 const BATCH_SIZE = 40;
 
 let client: OpenAI | undefined;
@@ -87,4 +91,27 @@ async function parseBatch(batch: RecommendationRow[]): Promise<ParsedRecommendat
       is_ambiguous: r.isAmbiguous,
     };
   });
+}
+
+const THEME_SYSTEM_PROMPT = `You read the caption of a weekly "Vinyl Picks" Instagram post, where a host
+features a few records tied together by a shared theme or genre.
+
+Return a short (2-4 word) theme label capturing what this week's picks have in common
+(e.g. "Psychedelic Rock", "Motown Classics", "90s Hip-Hop", "Female Vocalists"). Prefer the
+host's own wording when the caption states a genre/theme explicitly. If the caption gives no
+clear theme, return null rather than guessing.`;
+
+/** Extracts a short theme label (e.g. "Psychedelic Rock") from a Vinyl Picks caption, for playlist naming. */
+export async function extractCaptionTheme(caption: string): Promise<string | null> {
+  const completion = await getClient().beta.chat.completions.parse({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: THEME_SYSTEM_PROMPT },
+      { role: "user", content: caption },
+    ],
+    response_format: zodResponseFormat(CaptionThemeSchema, "theme"),
+  });
+
+  const parsed = completion.choices[0]?.message.parsed;
+  return normalizeNullable(parsed?.theme ?? null);
 }
