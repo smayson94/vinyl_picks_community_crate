@@ -49,12 +49,14 @@ Optionally set `SPOTIFY_PLAYLIST_ID` in `.env` to sync into a specific existing 
 
 Meta's Instagram API changed shape since this project started; the current, simplest path is **"Instagram API with Instagram Login"**, which — unlike the older Instagram Graph API — does **not** require a linked Facebook Page.
 
-1. Your Instagram account must be a **Professional account** (Business or Creator) — convert it in the Instagram app under Settings if it's still a personal account.
-2. Go to https://developers.facebook.com/apps → **Create App** → choose **Business** type.
-3. In the app dashboard, add the **Instagram** product → **API setup with Instagram business login**.
-4. Follow the setup steps there to add your own Instagram account to the app (Standard Access covers accounts you own, added directly in the dashboard — no App Review needed for personal use).
-5. Still in that same dashboard page, click **Generate token** next to your account, log into Instagram, and copy the token. This token is long-lived (valid 60 days); the pipeline automatically refreshes it for another 60 days on every run, so you shouldn't need to regenerate it manually once it's set.
-6. Paste it into `.env` as `INSTAGRAM_ACCESS_TOKEN`.
+1. Your Instagram account must be a **Professional account** (Business or Creator) *and set to Public* — convert/adjust it in the Instagram app under Settings if needed (a private account can't generate a test token).
+2. Go to https://developers.facebook.com/apps → **Create App**.
+3. Use case: select **Other** (there's no Instagram-specific option — this is the correct choice).
+4. App type: select **Business**. Add an app name + contact email.
+5. In the new app's dashboard, find the **Instagram** product card → click **Set up**. This auto-adds "API setup with Instagram login" — the no-Facebook-Page path we want.
+6. Under that section, add your own Instagram account as a tester (Standard Access covers accounts you own, added directly in the dashboard — no App Review needed for personal use).
+7. Click **Generate token** next to your account, log into Instagram, and copy the token. This token is long-lived (valid 60 days); the pipeline automatically refreshes it for another 60 days on every run, so you shouldn't need to regenerate it manually once it's set.
+8. Paste it into `.env` as `INSTAGRAM_ACCESS_TOKEN`.
 
 With that set, the pipeline fetches comments live — either from a specific Reel (pass its Instagram media ID as the reel id) or auto-detected as your account's most recent Reel (omit the id entirely).
 
