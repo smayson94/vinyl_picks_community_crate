@@ -1,8 +1,8 @@
 # Vinyl Picks — Community Playlist Automation
 
-Turns Instagram comments on the weekly "Vinyl Picks" Reel into a ranked, auto-updating Spotify (and eventually Apple Music) playlist, with a Monday email summary.
+Community-built playlist for the "Vinyl Picks" record-of-the-week series on Instagram: picks feature the most-recommended songs and artists from the comments.
 
-Full architecture and rationale: see [`.claude/plans` in the originating session] or the summary below.
+Turns those Instagram comments into a ranked, auto-updating Spotify (and eventually Apple Music) playlist, with a Monday email summary.
 
 ## How it works (Milestone 1 — current)
 
