@@ -5,7 +5,7 @@ import open from "open";
 import { updateEnvFile } from "../src/config/update-env-file.js";
 import { logger } from "../src/shared/logger.js";
 
-const SCOPES = "playlist-modify-public playlist-modify-private";
+const SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private";
 const ENV_PATH = new URL("../.env", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
 function base64url(input: Buffer): string {

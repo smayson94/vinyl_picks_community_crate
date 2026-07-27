@@ -74,10 +74,6 @@ export async function resolveTrackUris(album: RankedAlbum): Promise<string[]> {
   return uris;
 }
 
-interface SpotifyMeResponse {
-  id: string;
-}
-
 interface SpotifyPlaylist {
   id: string;
   name: string;
@@ -87,7 +83,7 @@ interface SpotifyPlaylistsResponse {
   items: SpotifyPlaylist[];
 }
 
-async function findPlaylistByName(userId: string, name: string): Promise<string | undefined> {
+async function findPlaylistByName(name: string): Promise<string | undefined> {
   const result = await spotifyFetch<SpotifyPlaylistsResponse>(`/me/playlists?limit=50`);
   return result.items.find((p) => p.name === name)?.id;
 }
@@ -97,11 +93,10 @@ export async function getOrCreatePlaylist(name: string): Promise<string> {
   const env = loadEnv();
   if (env.SPOTIFY_PLAYLIST_ID) return env.SPOTIFY_PLAYLIST_ID;
 
-  const me = await spotifyFetch<SpotifyMeResponse>("/me");
-  const existingId = await findPlaylistByName(me.id, name);
+  const existingId = await findPlaylistByName(name);
   if (existingId) return existingId;
 
-  const created = await spotifyFetch<SpotifyPlaylist>(`/users/${me.id}/playlists`, {
+  const created = await spotifyFetch<SpotifyPlaylist>(`/me/playlists`, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -115,13 +110,13 @@ export async function getOrCreatePlaylist(name: string): Promise<string> {
 /** Replaces the playlist's full tracklist with `trackUris`, in order (Spotify caps a single request at 100 URIs). */
 export async function replacePlaylistTracks(playlistId: string, trackUris: string[]): Promise<void> {
   const first100 = trackUris.slice(0, 100);
-  await spotifyFetch(`/playlists/${playlistId}/tracks`, {
+  await spotifyFetch(`/playlists/${playlistId}/items`, {
     method: "PUT",
     body: JSON.stringify({ uris: first100 }),
   });
 
   for (let i = 100; i < trackUris.length; i += 100) {
-    await spotifyFetch(`/playlists/${playlistId}/tracks`, {
+    await spotifyFetch(`/playlists/${playlistId}/items`, {
       method: "POST",
       body: JSON.stringify({ uris: trackUris.slice(i, i + 100) }),
     });
