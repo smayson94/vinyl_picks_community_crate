@@ -21,6 +21,10 @@ describe("fuzzyEqual", () => {
     expect(fuzzyEqual("Dark Side of the Moon", "dark side of the moon")).toBe(true);
   });
 
+  it("treats & and \"and\" as equivalent in band names", () => {
+    expect(fuzzyEqual("Emerson, Lake & Palmer", "Emerson Lake and Palmer")).toBe(true);
+  });
+
   it("matches near-miss typos within threshold", () => {
     expect(fuzzyEqual("Maggot Brain", "Magot Brain")).toBe(true);
   });

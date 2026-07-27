@@ -2,6 +2,7 @@
 export function normalizeText(text: string): string {
   return text
     .toLowerCase()
+    .replace(/&/g, " and ") // "Emerson, Lake & Palmer" vs "Emerson Lake and Palmer" should match
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "") // strip accents
     .replace(/[^a-z0-9\s]/g, "")

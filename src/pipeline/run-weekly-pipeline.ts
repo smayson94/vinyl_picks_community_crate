@@ -2,8 +2,10 @@ import "../config/env.js";
 import { loadEnv } from "../config/env.js";
 import { parseComments } from "../comment-parser/openai-parser.js";
 import {
+  extractCaptionPickLines,
   fetchComments,
   fetchLatestReelMedia,
+  fetchMediaCaption,
   fetchMediaPostedAt,
   getIgUserId,
   refreshAccessToken,
@@ -22,8 +24,11 @@ import {
   recordPlaylistSync,
   setReelStatus,
   upsertReel,
+  type RawComment,
   type Reel,
 } from "../storage/repository.js";
+
+const MAX_PLAYLIST_TRACKS = 50;
 
 /**
  * Resolves which reel to run the pipeline for. If `reelIdArg` names a reel already in the
@@ -92,8 +97,20 @@ async function ensureCommentsFetched(reel: Reel): Promise<Reel> {
   const env = loadEnv();
   if (env.INSTAGRAM_ACCESS_TOKEN) {
     const comments = await fetchComments(reel.id);
-    const inserted = insertComments(reel.id, comments);
-    logger.info(`Fetched ${comments.length} comment(s) from Instagram for reel "${reel.id}" (${inserted} new).`);
+
+    const caption = await fetchMediaCaption(reel.id);
+    const captionComments: RawComment[] = caption
+      ? extractCaptionPickLines(caption).map((line, i) => ({
+          ig_comment_id: `${reel.id}:caption:${i}`,
+          username: "caption",
+          comment_text: line,
+        }))
+      : [];
+
+    const inserted = insertComments(reel.id, [...comments, ...captionComments]);
+    logger.info(
+      `Fetched ${comments.length} comment(s) + ${captionComments.length} caption pick(s) from Instagram for reel "${reel.id}" (${inserted} new).`
+    );
   }
   // else: comments assumed already imported via `npm run import:comments` (CSV fallback path).
 
@@ -135,8 +152,13 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
 
   const trackUris: string[] = [];
   for (const album of ranked) {
+    if (trackUris.length >= MAX_PLAYLIST_TRACKS) break;
     const uris = await resolveTrackUris(album);
     trackUris.push(...uris);
+  }
+  if (trackUris.length > MAX_PLAYLIST_TRACKS) {
+    logger.info(`Capping playlist at ${MAX_PLAYLIST_TRACKS} tracks (resolved ${trackUris.length}).`);
+    trackUris.length = MAX_PLAYLIST_TRACKS;
   }
 
   const playlistName = `Vinyl Picks — Week of ${reel.posted_at}`;

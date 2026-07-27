@@ -111,10 +111,33 @@ export async function fetchMediaPostedAt(mediaId: string): Promise<string> {
   return media.timestamp.slice(0, 10);
 }
 
+interface IgMediaCaptionResponse {
+  caption?: string;
+}
+
+/** Fetches a media object's caption text, which names the host's own picks for the week. */
+export async function fetchMediaCaption(mediaId: string): Promise<string | undefined> {
+  const media = await igFetch<IgMediaCaptionResponse>(`/${mediaId}`, { fields: "caption" });
+  return media.caption;
+}
+
+/**
+ * Splits a Vinyl Picks caption into one line per bullet pick (e.g. "🍄 Artist – Album"), so the
+ * host's own weekly picks feed into the same comment-parser/ranking pipeline as community
+ * comments -- meaning they naturally merge with matching community mentions of the same album.
+ */
+export function extractCaptionPickLines(caption: string): string[] {
+  return caption
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /[-–—]/.test(line) && line.length > 3);
+}
+
 interface IgCommentItem {
   id: string;
   text?: string;
-  username?: string;
+  username?: string; // only ever populated for the token owner's own comments
+  from?: { id: string; username?: string }; // the commenter's identity for everyone else
   timestamp: string;
 }
 
@@ -127,7 +150,7 @@ interface IgCommentsResponse {
 export async function fetchComments(mediaId: string): Promise<RawComment[]> {
   const all: RawComment[] = [];
   let url: string | undefined =
-    `${HOST}/${API_VERSION}/${mediaId}/comments?fields=id,text,timestamp,username&limit=50` +
+    `${HOST}/${API_VERSION}/${mediaId}/comments?fields=id,text,timestamp,from&limit=50` +
     `&access_token=${encodeURIComponent(getToken())}`;
 
   while (url) {
@@ -139,7 +162,8 @@ export async function fetchComments(mediaId: string): Promise<RawComment[]> {
       // Comments with no text (e.g. GIF/sticker-only replies) carry no music-recommendation
       // signal, so there's nothing useful to store or parse.
       if (!c.text) continue;
-      all.push({ ig_comment_id: c.id, username: c.username ?? "unknown", comment_text: c.text });
+      const username = c.from?.username ?? c.username ?? "unknown";
+      all.push({ ig_comment_id: c.id, username, comment_text: c.text });
     }
     url = data.paging?.next;
   }
