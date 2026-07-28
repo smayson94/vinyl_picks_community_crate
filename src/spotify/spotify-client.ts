@@ -23,8 +23,10 @@ async function spotifyFetch<T>(pathAndQuery: string, init: RequestInit = {}): Pr
     throw new Error(`Spotify API ${pathAndQuery} failed: ${response.status} ${await response.text()}`);
   }
 
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  // Some endpoints (e.g. PUT /playlists/{id}) return 200 with an empty body rather than 204,
+  // so a status check alone isn't reliable -- read the raw text and only parse it if non-empty.
+  const text = await response.text();
+  return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
 interface SpotifySearchAlbumsResponse {
@@ -159,6 +161,14 @@ export async function getOrCreatePlaylist(name: string): Promise<string> {
     }),
   });
   return created.id;
+}
+
+/** Updates a playlist's description (e.g. to credit the community and list this week's top picks). */
+export async function updatePlaylistDescription(playlistId: string, description: string): Promise<void> {
+  await spotifyFetch(`/playlists/${playlistId}`, {
+    method: "PUT",
+    body: JSON.stringify({ description }),
+  });
 }
 
 /** Replaces the playlist's full tracklist with `trackUris`, in order (Spotify caps a single request at 100 URIs). */

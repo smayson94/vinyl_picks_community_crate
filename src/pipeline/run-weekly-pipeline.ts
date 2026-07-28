@@ -11,9 +11,15 @@ import {
   getIgUserId,
   refreshAccessToken,
 } from "../instagram/instagram-client.js";
+import { buildPlaylistDescription, playlistNameFor } from "./playlist-format.js";
 import { rankRecommendations, type RecommendationInput } from "../ranking/rank.js";
 import { logger } from "../shared/logger.js";
-import { getOrCreatePlaylist, replacePlaylistTracks, resolveTrackUris } from "../spotify/spotify-client.js";
+import {
+  getOrCreatePlaylist,
+  replacePlaylistTracks,
+  resolveTrackUris,
+  updatePlaylistDescription,
+} from "../spotify/spotify-client.js";
 import {
   applyParsedRecommendations,
   getRecommendationsForReel,
@@ -142,10 +148,6 @@ async function ensureParsed(reel: Reel): Promise<Reel> {
   return getReel(reel.id)!;
 }
 
-function playlistNameFor(reel: Reel): string {
-  return reel.theme ? `Community Crate - ${reel.theme}` : `Community Crate - Week of ${reel.posted_at}`;
-}
-
 function getRankedAlbums(reel: Reel) {
   const rows = getRecommendationsForReel(reel.id);
   const asInput: RecommendationInput[] = rows.map((r) => ({
@@ -180,6 +182,7 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
   const playlistName = playlistNameFor(reel);
   const playlistId = await getOrCreatePlaylist(playlistName);
   await replacePlaylistTracks(playlistId, trackUris);
+  await updatePlaylistDescription(playlistId, buildPlaylistDescription(ranked));
   recordPlaylistSync(reel.id, "spotify", playlistId, trackUris.length);
   logger.info(`Synced ${trackUris.length} track(s) to Spotify playlist "${playlistName}" (${playlistId}).`);
 
