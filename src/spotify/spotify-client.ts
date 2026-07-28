@@ -88,12 +88,15 @@ export async function resolveTrackUris(album: RankedAlbum, tracksPerAlbum: numbe
 
   if (uris.length >= tracksPerAlbum) return uris.slice(0, tracksPerAlbum);
 
-  // Verified paths first (exact, then free-text-with-artist-check, then a model-corrected title
-  // retried through both) -- only fall through to the unverified album-title-only search as a
-  // genuine last resort. That search has no artist check at all, so trying it too early risks
-  // accepting a same-titled-but-wrong album (e.g. "Don't Ask" by Sonny Rollins vs. an unrelated
-  // "You Don't Gotta Ask" by a completely different artist) when a verified search further down
-  // the chain would have found the real one correctly.
+  // Every path here verifies the artist before accepting a match. An earlier version also fell
+  // back to an unverified album-title-only search as a last resort (to catch albums Spotify
+  // credits differently than a commenter did, e.g. a collaboration credited to the other artist)
+  // -- but backfilling real historical weeks showed that path is genuinely unsafe: of 5 unverified
+  // matches in one batch, 3 were wrong (a JMSN album resolved to an unrelated Matt Dusk track, an
+  // Average White Band album resolved to a Debussy classical piano collection, another AWB album
+  // resolved to a different artist entirely). A same-titled-but-wrong album slipping into a public
+  // "community crate" playlist is worse than occasionally skipping a real but mis-credited one, so
+  // this app now only ever adds a track it can verify actually matches the artist.
   let albumId = await searchAlbumId(`album:${quoteForSearch(album.album)} artist:${quoteForSearch(album.artist)}`);
 
   if (!albumId) {
@@ -114,15 +117,6 @@ export async function resolveTrackUris(album: RankedAlbum, tracksPerAlbum: numbe
       if (!albumId) albumId = await searchAlbumIdFreeText(corrected, album.artist);
       if (albumId) logger.info(`Resolved "${album.album}" via corrected title "${corrected}".`);
     }
-  }
-
-  if (!albumId) {
-    // Last resort, unverified: Spotify sometimes credits an album to different/additional artists
-    // than the one a commenter named (e.g. a collaboration album credited primarily to the other
-    // artist), which an album-title-only search can still catch -- but with no way to verify the
-    // artist here, this is the least trustworthy path, tried only once everything safer has failed.
-    albumId = await searchAlbumId(`album:${quoteForSearch(album.album)}`);
-    if (albumId) logger.warn(`Resolved "${album.album}" via unverified album-title match — double check this one.`);
   }
 
   if (albumId) {
