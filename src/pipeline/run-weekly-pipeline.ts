@@ -1,5 +1,6 @@
 import "../config/env.js";
 import { loadEnv } from "../config/env.js";
+import { getOrCreateLibraryPlaylist, resolveAppleMusicSongIds } from "../apple-music/apple-music-client.js";
 import { extractCaptionTheme, parseComments } from "../comment-parser/openai-parser.js";
 import {
   extractCaptionPickLines,
@@ -82,6 +83,7 @@ export async function runPipelineForReel(reelId: string): Promise<void> {
     reel = await ensureCommentsFetched(reel);
     reel = await ensureParsed(reel);
     reel = await ensureSpotifySynced(reel);
+    reel = await ensureAppleMusicSynced(reel);
     setReelStatus(reel.id, "DONE");
     logger.info(`Reel "${reel.id}" pipeline complete.`);
   } catch (err) {
@@ -140,9 +142,11 @@ async function ensureParsed(reel: Reel): Promise<Reel> {
   return getReel(reel.id)!;
 }
 
-async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
-  if (hasReachedStatus(reel.status, "SPOTIFY_SYNCED")) return reel;
+function playlistNameFor(reel: Reel): string {
+  return reel.theme ? `Community Crate - ${reel.theme}` : `Community Crate - Week of ${reel.posted_at}`;
+}
 
+function getRankedAlbums(reel: Reel) {
   const rows = getRecommendationsForReel(reel.id);
   const asInput: RecommendationInput[] = rows.map((r) => ({
     artist: r.artist,
@@ -150,8 +154,13 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
     song: r.song,
     is_ambiguous: !!r.is_ambiguous,
   }));
+  return rankRecommendations(asInput);
+}
 
-  const { ranked, ambiguous } = rankRecommendations(asInput);
+async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
+  if (hasReachedStatus(reel.status, "SPOTIFY_SYNCED")) return reel;
+
+  const { ranked, ambiguous } = getRankedAlbums(reel);
   logger.info(
     `Reel "${reel.id}": ${ranked.length} ranked album(s), ${ambiguous.length} ambiguous/unresolved comment(s).`
   );
@@ -168,13 +177,44 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
     trackUris.length = MAX_PLAYLIST_TRACKS;
   }
 
-  const playlistName = reel.theme ? `Community Crate - ${reel.theme}` : `Community Crate - Week of ${reel.posted_at}`;
+  const playlistName = playlistNameFor(reel);
   const playlistId = await getOrCreatePlaylist(playlistName);
   await replacePlaylistTracks(playlistId, trackUris);
   recordPlaylistSync(reel.id, "spotify", playlistId, trackUris.length);
   logger.info(`Synced ${trackUris.length} track(s) to Spotify playlist "${playlistName}" (${playlistId}).`);
 
   setReelStatus(reel.id, "SPOTIFY_SYNCED");
+  return getReel(reel.id)!;
+}
+
+async function ensureAppleMusicSynced(reel: Reel): Promise<Reel> {
+  if (hasReachedStatus(reel.status, "APPLE_SYNCED")) return reel;
+
+  const env = loadEnv();
+  const configured =
+    env.APPLE_MUSIC_TEAM_ID && env.APPLE_MUSIC_KEY_ID && env.APPLE_MUSIC_PRIVATE_KEY_PATH && env.APPLE_MUSIC_USER_TOKEN;
+
+  if (!configured) {
+    setReelStatus(reel.id, "APPLE_SYNCED");
+    return getReel(reel.id)!;
+  }
+
+  const { ranked } = getRankedAlbums(reel);
+
+  const songIds: string[] = [];
+  for (const album of ranked) {
+    if (songIds.length >= MAX_PLAYLIST_TRACKS) break;
+    const ids = await resolveAppleMusicSongIds(album);
+    songIds.push(...ids);
+  }
+  if (songIds.length > MAX_PLAYLIST_TRACKS) songIds.length = MAX_PLAYLIST_TRACKS;
+
+  const playlistName = playlistNameFor(reel);
+  const playlistId = await getOrCreateLibraryPlaylist(playlistName, songIds);
+  recordPlaylistSync(reel.id, "apple_music", playlistId, songIds.length);
+  logger.info(`Synced ${songIds.length} track(s) to Apple Music playlist "${playlistName}" (${playlistId}).`);
+
+  setReelStatus(reel.id, "APPLE_SYNCED");
   return getReel(reel.id)!;
 }
 

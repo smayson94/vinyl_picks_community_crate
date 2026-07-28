@@ -9,6 +9,11 @@ const envSchema = z.object({
   SPOTIFY_REFRESH_TOKEN: z.string().optional(),
   SPOTIFY_PLAYLIST_ID: z.string().optional(),
   INSTAGRAM_ACCESS_TOKEN: z.string().optional(),
+  APPLE_MUSIC_TEAM_ID: z.string().optional(),
+  APPLE_MUSIC_KEY_ID: z.string().optional(),
+  APPLE_MUSIC_PRIVATE_KEY_PATH: z.string().optional(),
+  APPLE_MUSIC_USER_TOKEN: z.string().optional(),
+  APPLE_MUSIC_STOREFRONT: z.string().default("us"),
   DATABASE_PATH: z.string().default("./data/vinylpicks.db"),
 });
 

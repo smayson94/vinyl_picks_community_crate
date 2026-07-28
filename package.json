@@ -13,18 +13,21 @@
     "pipeline:dev": "tsx src/pipeline/run-weekly-pipeline.ts",
     "import:comments": "tsx scripts/import-manual-comments.ts",
     "setup:spotify": "tsx scripts/setup-spotify-auth.ts",
+    "setup:apple-music": "tsx scripts/setup-apple-music-auth.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
     "dotenv": "^16.4.5",
-    "openai": "^4.67.3",
+    "jsonwebtoken": "^9.0.3",
     "open": "^10.1.0",
+    "openai": "^4.67.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.14.15",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
