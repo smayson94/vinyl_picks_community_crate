@@ -96,6 +96,12 @@ npm run pipeline:dev -- <reel-id>     # a specific Instagram media id, or a CSV-
 
 This fetches/parses the comments (via Instagram or the CSV you already imported), dedupes/ranks recommendations by mention count, resolves 1-2 tracks per album on Spotify and (if configured) Apple Music, and syncs the target playlist(s) in ranked order. Safe to re-run — each stage is skipped once it's already completed for that reel, so a failure partway through (e.g. a flaky API call) never re-does finished work or double-syncs.
 
+Add `--refresh` to re-check a reel for new comments even after it's already fully synced (e.g. more comments came in after your first run):
+
+```bash
+npm run pipeline:dev -- <reel-id> --refresh
+```
+
 For unattended/scheduled runs, build first and run the compiled output (avoids any transpile step in a non-interactive session):
 
 ```bash

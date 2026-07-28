@@ -222,8 +222,21 @@ async function ensureAppleMusicSynced(reel: Reel): Promise<Reel> {
 }
 
 async function main() {
-  const reelIdArg = process.argv[2];
+  const args = process.argv.slice(2);
+  const refresh = args.includes("--refresh");
+  const reelIdArg = args.find((a) => !a.startsWith("--"));
+
   const reelId = await ensureReelRegistered(reelIdArg);
+
+  if (refresh) {
+    // Re-checks for new comments/re-syncs even if this reel already ran to completion -- useful
+    // for a mid-week or Monday-morning refresh once more comments have come in. Safe to do: comment
+    // inserts are deduped by ig_comment_id, only genuinely-new comments get (re-)parsed, and both
+    // playlist syncs are themselves idempotent replace/reuse operations.
+    logger.info(`Refreshing reel "${reelId}" — re-checking for new comments.`);
+    setReelStatus(reelId, "NEW");
+  }
+
   await runPipelineForReel(reelId);
 }
 
