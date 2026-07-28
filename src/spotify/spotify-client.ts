@@ -37,12 +37,28 @@ interface SpotifySearchTracksResponse {
   tracks: { items: { uri: string }[] };
 }
 
+/**
+ * Quotes a value for Spotify's field-qualified search syntax (e.g. album:"Ave Sangria").
+ * Unquoted multi-word values get misparsed -- e.g. `album:Ave Sangria artist:Ave Sangria`
+ * returns zero results, while `album:"Ave Sangria" artist:"Ave Sangria"` finds it correctly.
+ */
+function quoteForSearch(value: string): string {
+  return `"${value.replace(/"/g, "")}"`;
+}
+
+async function searchAlbumId(query: string): Promise<string | undefined> {
+  const result = await spotifyFetch<SpotifySearchAlbumsResponse>(
+    `/search?type=album&limit=1&q=${encodeURIComponent(query)}`
+  );
+  return result.albums.items[0]?.id;
+}
+
 /** Resolves a ranked album (plus any specifically-named songs) to a small set of Spotify track URIs. */
 export async function resolveTrackUris(album: RankedAlbum): Promise<string[]> {
   const uris: string[] = [];
 
   for (const song of album.songs) {
-    const query = encodeURIComponent(`track:${song} artist:${album.artist}`);
+    const query = encodeURIComponent(`track:${quoteForSearch(song)} artist:${quoteForSearch(album.artist)}`);
     const result = await spotifyFetch<SpotifySearchTracksResponse>(
       `/search?type=track&limit=1&q=${query}`
     );
@@ -52,11 +68,13 @@ export async function resolveTrackUris(album: RankedAlbum): Promise<string[]> {
 
   if (uris.length >= TRACKS_PER_ALBUM) return uris.slice(0, TRACKS_PER_ALBUM);
 
-  const albumQuery = encodeURIComponent(`album:${album.album} artist:${album.artist}`);
-  const albumResult = await spotifyFetch<SpotifySearchAlbumsResponse>(
-    `/search?type=album&limit=1&q=${albumQuery}`
-  );
-  const albumId = albumResult.albums.items[0]?.id;
+  let albumId = await searchAlbumId(`album:${quoteForSearch(album.album)} artist:${quoteForSearch(album.artist)}`);
+  if (!albumId) {
+    // Spotify sometimes credits an album to different/additional artists than the one a commenter
+    // named (e.g. a collaboration album credited primarily to the other artist) -- an album-title-only
+    // search still reliably finds the right record in that case.
+    albumId = await searchAlbumId(`album:${quoteForSearch(album.album)}`);
+  }
 
   if (albumId) {
     const tracks = await spotifyFetch<SpotifyAlbumTracksResponse>(
