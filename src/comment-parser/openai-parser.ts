@@ -22,6 +22,10 @@ const CaptionThemeSchema = z.object({
   theme: z.string().nullable(),
 });
 
+const TitleCorrectionSchema = z.object({
+  correctedTitle: z.string().nullable(),
+});
+
 const BATCH_SIZE = 40;
 
 let client: OpenAI | undefined;
@@ -114,4 +118,37 @@ export async function extractCaptionTheme(caption: string): Promise<string | nul
 
   const parsed = completion.choices[0]?.message.parsed;
   return normalizeNullable(parsed?.theme ?? null);
+}
+
+/**
+ * Suggests the real, exactly-formatted release title when a literal Spotify search comes up
+ * empty -- catches stylized punctuation/spelling variants a comment used (e.g. a fan writing
+ * "Our Days Mind the Thyme" for the real title "Our Days Mind the Tyme", or "Wake Up It's
+ * Tomorrow" for the actual "Wake Up...It's Tomorrow"). Relies on the model's own knowledge of
+ * real discographies, so it's a best-effort retry, not guaranteed to know every release.
+ */
+export async function suggestCorrectedTitle(
+  kind: "album" | "song",
+  name: string,
+  artist: string
+): Promise<string | null> {
+  const completion = await getClient().beta.chat.completions.parse({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `You know real music release titles precisely, including exact punctuation and stylization.
+Given an artist and a ${kind} name that may be slightly misspelled, mis-punctuated, or paraphrased
+from how a fan wrote it in a comment, return the exact title as it is actually released.
+If you don't confidently know the real release, or the given name already looks correct as-is,
+return null rather than guessing.`,
+      },
+      { role: "user", content: `Artist: ${artist}\n${kind === "album" ? "Album" : "Song"}: ${name}` },
+    ],
+    response_format: zodResponseFormat(TitleCorrectionSchema, "correction"),
+  });
+
+  const parsed = completion.choices[0]?.message.parsed;
+  const corrected = normalizeNullable(parsed?.correctedTitle ?? null);
+  return corrected && corrected.trim().toLowerCase() !== name.trim().toLowerCase() ? corrected : null;
 }
