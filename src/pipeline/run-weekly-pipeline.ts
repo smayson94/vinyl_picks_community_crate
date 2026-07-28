@@ -12,6 +12,7 @@ import {
   refreshAccessToken,
 } from "../instagram/instagram-client.js";
 import { buildPlaylistDescription, playlistNameFor } from "./playlist-format.js";
+import { writeReviewReport } from "./review-report.js";
 import { getCaptionOnlyAlbums, selectTracksForVariety, topUpTracks } from "./track-selection.js";
 import { rankRecommendations, type RankedAlbum, type RecommendationInput } from "../ranking/rank.js";
 import { logger } from "../shared/logger.js";
@@ -94,7 +95,8 @@ export async function runPipelineForReel(reelId: string): Promise<void> {
     reel = await ensureSpotifySynced(reel);
     reel = await ensureAppleMusicSynced(reel);
     setReelStatus(reel.id, "DONE");
-    logger.info(`Reel "${reel.id}" pipeline complete.`);
+    const reportPath = writeReviewReport(reel.id);
+    logger.info(`Reel "${reel.id}" pipeline complete. Review report: ${reportPath}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     setReelStatus(reel.id, reel.status, message);

@@ -14,6 +14,7 @@
     "import:comments": "tsx scripts/import-manual-comments.ts",
     "setup:spotify": "tsx scripts/setup-spotify-auth.ts",
     "setup:apple-music": "tsx scripts/setup-apple-music-auth.ts",
+    "review": "tsx scripts/generate-review.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
