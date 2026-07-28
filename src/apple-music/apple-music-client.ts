@@ -72,7 +72,10 @@ interface AppleMusicAlbumTracksResponse {
 }
 
 /** Resolves a ranked album (plus any specifically-named songs) to a small set of Apple Music catalog song ids. */
-export async function resolveAppleMusicSongIds(album: RankedAlbum): Promise<string[]> {
+export async function resolveAppleMusicSongIds(
+  album: RankedAlbum,
+  tracksPerAlbum: number = TRACKS_PER_ALBUM
+): Promise<string[]> {
   const ids: string[] = [];
 
   for (const song of album.songs) {
@@ -80,7 +83,7 @@ export async function resolveAppleMusicSongIds(album: RankedAlbum): Promise<stri
     if (id) ids.push(id);
   }
 
-  if (ids.length >= TRACKS_PER_ALBUM) return ids.slice(0, TRACKS_PER_ALBUM);
+  if (ids.length >= tracksPerAlbum) return ids.slice(0, tracksPerAlbum);
 
   let albumId = await searchAlbumId(`${album.album} ${album.artist}`, album.artist);
   if (!albumId) {
@@ -95,10 +98,10 @@ export async function resolveAppleMusicSongIds(album: RankedAlbum): Promise<stri
 
   if (albumId) {
     const tracks = await appleMusicFetch<AppleMusicAlbumTracksResponse>(
-      `/catalog/${storefront()}/albums/${albumId}/tracks?limit=${TRACKS_PER_ALBUM}`
+      `/catalog/${storefront()}/albums/${albumId}/tracks?limit=${tracksPerAlbum}`
     );
     for (const t of tracks.data) {
-      if (!ids.includes(t.id) && ids.length < TRACKS_PER_ALBUM) ids.push(t.id);
+      if (!ids.includes(t.id) && ids.length < tracksPerAlbum) ids.push(t.id);
     }
   }
 

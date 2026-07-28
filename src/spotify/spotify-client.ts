@@ -74,7 +74,7 @@ async function searchAlbumIdFreeText(albumName: string, artistName: string): Pro
 }
 
 /** Resolves a ranked album (plus any specifically-named songs) to a small set of Spotify track URIs. */
-export async function resolveTrackUris(album: RankedAlbum): Promise<string[]> {
+export async function resolveTrackUris(album: RankedAlbum, tracksPerAlbum: number = TRACKS_PER_ALBUM): Promise<string[]> {
   const uris: string[] = [];
 
   for (const song of album.songs) {
@@ -86,7 +86,7 @@ export async function resolveTrackUris(album: RankedAlbum): Promise<string[]> {
     if (uri) uris.push(uri);
   }
 
-  if (uris.length >= TRACKS_PER_ALBUM) return uris.slice(0, TRACKS_PER_ALBUM);
+  if (uris.length >= tracksPerAlbum) return uris.slice(0, tracksPerAlbum);
 
   let albumId = await searchAlbumId(`album:${quoteForSearch(album.album)} artist:${quoteForSearch(album.artist)}`);
   if (!albumId) {
@@ -116,10 +116,10 @@ export async function resolveTrackUris(album: RankedAlbum): Promise<string[]> {
 
   if (albumId) {
     const tracks = await spotifyFetch<SpotifyAlbumTracksResponse>(
-      `/albums/${albumId}/tracks?limit=${TRACKS_PER_ALBUM}`
+      `/albums/${albumId}/tracks?limit=${tracksPerAlbum}`
     );
     for (const t of tracks.items) {
-      if (!uris.includes(t.uri) && uris.length < TRACKS_PER_ALBUM) uris.push(t.uri);
+      if (!uris.includes(t.uri) && uris.length < tracksPerAlbum) uris.push(t.uri);
     }
   }
 

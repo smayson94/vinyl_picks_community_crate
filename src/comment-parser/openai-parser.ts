@@ -26,6 +26,10 @@ const TitleCorrectionSchema = z.object({
   correctedTitle: z.string().nullable(),
 });
 
+const SimilarAlbumsSchema = z.object({
+  suggestions: z.array(z.object({ artist: z.string(), album: z.string() })),
+});
+
 const BATCH_SIZE = 40;
 
 let client: OpenAI | undefined;
@@ -151,4 +155,47 @@ return null rather than guessing.`,
   const parsed = completion.choices[0]?.message.parsed;
   const corrected = normalizeNullable(parsed?.correctedTitle ?? null);
   return corrected && corrected.trim().toLowerCase() !== name.trim().toLowerCase() ? corrected : null;
+}
+
+const SIMILAR_ALBUMS_SYSTEM_PROMPT = `You have deep knowledge of real music discographies. Given a handful of
+seed artists and (optionally) a genre/theme, suggest real, existing albums in a similar vein --
+similar genre, era, or mood -- that a fan of the seed artists would likely enjoy.
+
+Only suggest albums you are confident actually exist and are correctly titled and credited. Do not
+suggest anything already in the excluded list. Prefer well-known, widely-available albums over
+obscure ones you're less sure about.`;
+
+/**
+ * Suggests real similar albums for weeks with too few community/caption recommendations to fill
+ * a playlist on their own. Spotify's own recommendations/related-artists endpoints return
+ * 403/404 for this app (confirmed -- Development Mode restriction), so this substitutes an
+ * LLM-driven suggestion step, with results resolved through the normal catalog search afterward
+ * rather than trusted directly.
+ */
+export async function suggestSimilarAlbums(
+  seedArtists: string[],
+  theme: string | null,
+  exclude: string[],
+  count: number
+): Promise<{ artist: string; album: string }[]> {
+  const prompt = [
+    `Seed artists: ${seedArtists.join(", ")}`,
+    theme ? `Theme: ${theme}` : null,
+    exclude.length ? `Already included, do not repeat: ${exclude.join("; ")}` : null,
+    `Suggest ${count} similar albums.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const completion = await getClient().beta.chat.completions.parse({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: SIMILAR_ALBUMS_SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+    response_format: zodResponseFormat(SimilarAlbumsSchema, "suggestions"),
+  });
+
+  const parsed = completion.choices[0]?.message.parsed;
+  return parsed?.suggestions ?? [];
 }

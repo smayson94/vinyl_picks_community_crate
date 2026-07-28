@@ -74,6 +74,7 @@ interface IgMediaListItem {
   id: string;
   media_product_type?: string;
   timestamp: string;
+  caption?: string;
 }
 
 interface IgMediaListResponse {
@@ -99,6 +100,41 @@ export async function fetchLatestReelMedia(igUserId: string): Promise<{ id: stri
   }
 
   throw new Error("No Reel found in the account's recent media.");
+}
+
+export interface ReelSummary {
+  id: string;
+  postedAt: string;
+  caption?: string;
+}
+
+/**
+ * Lists up to `maxCount` past Reels (most-recent first), with captions, so a mixed feed of
+ * different content types can be manually or heuristically filtered down to just the Vinyl
+ * Picks posts before backfilling them. Scans considerably deeper than fetchLatestReelMedia
+ * since the target posts may be interspersed with other Reel types.
+ */
+export async function fetchRecentReels(igUserId: string, maxCount: number): Promise<ReelSummary[]> {
+  const results: ReelSummary[] = [];
+  let url: string | undefined =
+    `${HOST}/${API_VERSION}/${igUserId}/media?fields=id,media_product_type,timestamp,caption&limit=25` +
+    `&access_token=${encodeURIComponent(getToken())}`;
+
+  const MAX_PAGES = 12;
+  for (let page = 0; url && page < MAX_PAGES && results.length < maxCount; page++) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Instagram media list failed: ${res.status} ${await res.text()}`);
+
+    const data = (await res.json()) as IgMediaListResponse;
+    for (const m of data.data) {
+      if (m.media_product_type !== "REELS") continue;
+      results.push({ id: m.id, postedAt: m.timestamp.slice(0, 10), caption: m.caption });
+      if (results.length >= maxCount) break;
+    }
+    url = data.paging?.next;
+  }
+
+  return results;
 }
 
 interface IgMediaMetaResponse {

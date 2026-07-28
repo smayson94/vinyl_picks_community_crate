@@ -12,7 +12,8 @@ import {
   refreshAccessToken,
 } from "../instagram/instagram-client.js";
 import { buildPlaylistDescription, playlistNameFor } from "./playlist-format.js";
-import { rankRecommendations, type RecommendationInput } from "../ranking/rank.js";
+import { getCaptionOnlyAlbums, topUpTracks } from "./track-selection.js";
+import { rankRecommendations, type RankedAlbum, type RecommendationInput } from "../ranking/rank.js";
 import { logger } from "../shared/logger.js";
 import {
   getOrCreatePlaylist,
@@ -37,6 +38,7 @@ import {
 } from "../storage/repository.js";
 
 const MAX_PLAYLIST_TRACKS = 50;
+const MIN_PLAYLIST_TRACKS = 15; // below this, top up from caption albums + LLM-suggested similar albums
 
 /**
  * Resolves which reel to run the pipeline for. If `reelIdArg` names a reel already in the
@@ -159,6 +161,10 @@ function getRankedAlbums(reel: Reel) {
   return rankRecommendations(asInput);
 }
 
+function getSeedArtists(ranked: RankedAlbum[], captionAlbums: RankedAlbum[]): string[] {
+  return [...new Set([...captionAlbums, ...ranked].map((a) => a.artist))].slice(0, 6);
+}
+
 async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
   if (hasReachedStatus(reel.status, "SPOTIFY_SYNCED")) return reel;
 
@@ -168,12 +174,27 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
   );
   setReelStatus(reel.id, "RANKED");
 
-  const trackUris: string[] = [];
+  let trackUris: string[] = [];
   for (const album of ranked) {
     if (trackUris.length >= MAX_PLAYLIST_TRACKS) break;
     const uris = await resolveTrackUris(album);
     trackUris.push(...uris);
   }
+
+  if (trackUris.length < MIN_PLAYLIST_TRACKS) {
+    const rows = getRecommendationsForReel(reel.id);
+    const captionAlbums = getCaptionOnlyAlbums(rows);
+    trackUris = await topUpTracks(trackUris, {
+      targetCount: MIN_PLAYLIST_TRACKS,
+      resolveAlbum: (album, tracksPerAlbum) => resolveTrackUris(album, tracksPerAlbum),
+      captionAlbums,
+      alreadyIncluded: ranked.map((a) => ({ artist: a.artist, album: a.album })),
+      theme: reel.theme,
+      seedArtists: getSeedArtists(ranked, captionAlbums),
+      platformLabel: "Spotify",
+    });
+  }
+
   if (trackUris.length > MAX_PLAYLIST_TRACKS) {
     logger.info(`Capping playlist at ${MAX_PLAYLIST_TRACKS} tracks (resolved ${trackUris.length}).`);
     trackUris.length = MAX_PLAYLIST_TRACKS;
@@ -204,12 +225,27 @@ async function ensureAppleMusicSynced(reel: Reel): Promise<Reel> {
 
   const { ranked } = getRankedAlbums(reel);
 
-  const songIds: string[] = [];
+  let songIds: string[] = [];
   for (const album of ranked) {
     if (songIds.length >= MAX_PLAYLIST_TRACKS) break;
     const ids = await resolveAppleMusicSongIds(album);
     songIds.push(...ids);
   }
+
+  if (songIds.length < MIN_PLAYLIST_TRACKS) {
+    const rows = getRecommendationsForReel(reel.id);
+    const captionAlbums = getCaptionOnlyAlbums(rows);
+    songIds = await topUpTracks(songIds, {
+      targetCount: MIN_PLAYLIST_TRACKS,
+      resolveAlbum: (album, tracksPerAlbum) => resolveAppleMusicSongIds(album, tracksPerAlbum),
+      captionAlbums,
+      alreadyIncluded: ranked.map((a) => ({ artist: a.artist, album: a.album })),
+      theme: reel.theme,
+      seedArtists: getSeedArtists(ranked, captionAlbums),
+      platformLabel: "Apple Music",
+    });
+  }
+
   if (songIds.length > MAX_PLAYLIST_TRACKS) songIds.length = MAX_PLAYLIST_TRACKS;
 
   const playlistName = playlistNameFor(reel);
