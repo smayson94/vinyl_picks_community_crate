@@ -175,6 +175,7 @@ interface IgCommentItem {
   username?: string; // only ever populated for the token owner's own comments
   from?: { id: string; username?: string }; // the commenter's identity for everyone else
   timestamp: string;
+  like_count?: number;
 }
 
 interface IgCommentsResponse {
@@ -186,7 +187,7 @@ interface IgCommentsResponse {
 export async function fetchComments(mediaId: string): Promise<RawComment[]> {
   const all: RawComment[] = [];
   let url: string | undefined =
-    `${HOST}/${API_VERSION}/${mediaId}/comments?fields=id,text,timestamp,from&limit=50` +
+    `${HOST}/${API_VERSION}/${mediaId}/comments?fields=id,text,timestamp,from,like_count&limit=50` +
     `&access_token=${encodeURIComponent(getToken())}`;
 
   while (url) {
@@ -199,7 +200,7 @@ export async function fetchComments(mediaId: string): Promise<RawComment[]> {
       // signal, so there's nothing useful to store or parse.
       if (!c.text) continue;
       const username = c.from?.username ?? c.username ?? "unknown";
-      all.push({ ig_comment_id: c.id, username, comment_text: c.text });
+      all.push({ ig_comment_id: c.id, username, comment_text: c.text, like_count: c.like_count ?? 0 });
     }
     url = data.paging?.next;
   }

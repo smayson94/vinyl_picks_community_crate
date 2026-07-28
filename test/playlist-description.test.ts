@@ -3,7 +3,7 @@ import { buildPlaylistDescription } from "../src/pipeline/playlist-format.js";
 import type { RankedAlbum } from "../src/ranking/rank.js";
 
 function album(partial: Partial<RankedAlbum>): RankedAlbum {
-  return { artist: "Some Artist", album: "Some Album", songs: [], mentionCount: 1, ...partial };
+  return { artist: "Some Artist", album: "Some Album", songs: [], mentionCount: 1, score: 1, ...partial };
 }
 
 describe("buildPlaylistDescription", () => {

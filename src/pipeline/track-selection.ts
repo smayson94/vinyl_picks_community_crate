@@ -20,7 +20,47 @@ export function getCaptionOnlyAlbums(rows: RecommendationRow[]): RankedAlbum[] {
     album: group[0].album,
     songs: [...new Set(group.map((r) => r.song).filter((s): s is string => !!s))],
     mentionCount: group.length,
+    score: group.length,
   }));
+}
+
+const DEFAULT_TRACKS_PER_ALBUM = 2;
+
+export interface VarietySelectionOptions {
+  maxTracks: number;
+  resolveAlbum: (album: RankedAlbum, tracksPerAlbum: number) => Promise<string[]>;
+  tracksPerAlbum?: number;
+}
+
+/**
+ * Resolves tracks for the top-ranked albums (bounded to `maxTracks` of them, since no more than
+ * that could ever fit even at one track each) and distributes them round-robin -- one track from
+ * each album in rank order first, then a second track per album only if there's still room -- so
+ * a week with enough distinct recommended albums to fill the playlist shows more variety instead
+ * of always taking 2 tracks from fewer, higher-ranked albums.
+ */
+export async function selectTracksForVariety(
+  ranked: RankedAlbum[],
+  opts: VarietySelectionOptions
+): Promise<string[]> {
+  const perAlbumCap = opts.tracksPerAlbum ?? DEFAULT_TRACKS_PER_ALBUM;
+  const candidates = ranked.slice(0, opts.maxTracks);
+
+  const perAlbumTracks: string[][] = [];
+  for (const album of candidates) {
+    perAlbumTracks.push(await opts.resolveAlbum(album, perAlbumCap));
+  }
+
+  const result: string[] = [];
+  for (let round = 0; round < perAlbumCap && result.length < opts.maxTracks; round++) {
+    for (const tracks of perAlbumTracks) {
+      if (result.length >= opts.maxTracks) break;
+      const id = tracks[round];
+      if (id && !result.includes(id)) result.push(id);
+    }
+  }
+
+  return result;
 }
 
 const CAPTION_BOOST_TRACKS_PER_ALBUM = 5;
@@ -80,7 +120,7 @@ export async function topUpTracks(current: string[], opts: TopUpOptions): Promis
       seenLabels.push(`${s.artist} - ${s.album}`);
 
       const found = await opts.resolveAlbum(
-        { artist: s.artist, album: s.album, songs: [], mentionCount: 0 },
+        { artist: s.artist, album: s.album, songs: [], mentionCount: 0, score: 0 },
         SIMILAR_ALBUM_TRACKS
       );
       for (const id of found) if (!ids.includes(id)) ids.push(id);

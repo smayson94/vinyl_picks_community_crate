@@ -40,6 +40,7 @@ function runMigrations(db: Database.Database): void {
       song TEXT,
       confidence REAL,
       is_ambiguous INTEGER NOT NULL DEFAULT 0,
+      like_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -59,5 +60,10 @@ function runMigrations(db: Database.Database): void {
   const reelColumns = db.prepare(`PRAGMA table_info(reels)`).all() as { name: string }[];
   if (!reelColumns.some((c) => c.name === "theme")) {
     db.exec(`ALTER TABLE reels ADD COLUMN theme TEXT`);
+  }
+
+  const recommendationColumns = db.prepare(`PRAGMA table_info(recommendations)`).all() as { name: string }[];
+  if (!recommendationColumns.some((c) => c.name === "like_count")) {
+    db.exec(`ALTER TABLE recommendations ADD COLUMN like_count INTEGER NOT NULL DEFAULT 0`);
   }
 }

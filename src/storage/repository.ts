@@ -26,6 +26,7 @@ export interface RawComment {
   ig_comment_id: string;
   username: string;
   comment_text: string;
+  like_count?: number;
 }
 
 export interface ParsedRecommendation {
@@ -43,6 +44,7 @@ export interface RecommendationRow {
   ig_comment_id: string;
   username: string;
   comment_text: string;
+  like_count: number;
   artist: string | null;
   album: string | null;
   song: string | null;
@@ -88,14 +90,14 @@ export function markCommentsFetched(id: string): void {
 export function insertComments(reelId: string, comments: RawComment[]): number {
   const db = getDb();
   const insert = db.prepare(
-    `INSERT INTO recommendations (reel_id, ig_comment_id, username, comment_text)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO recommendations (reel_id, ig_comment_id, username, comment_text, like_count)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(ig_comment_id) DO NOTHING`
   );
   const insertMany = db.transaction((rows: RawComment[]) => {
     let count = 0;
     for (const c of rows) {
-      const result = insert.run(reelId, c.ig_comment_id, c.username, c.comment_text);
+      const result = insert.run(reelId, c.ig_comment_id, c.username, c.comment_text, c.like_count ?? 0);
       if (result.changes > 0) count += 1;
     }
     return count;

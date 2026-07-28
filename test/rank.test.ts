@@ -38,6 +38,23 @@ describe("rankRecommendations", () => {
     expect(ambiguous).toHaveLength(2);
   });
 
+  it("lets a well-liked single comment outrank several unliked mentions", () => {
+    const input: RecommendationInput[] = [
+      rec({ artist: "Boz Scaggs", album: "Silk Degrees", like_count: 50 }),
+      rec({ artist: "Funkadelic", album: "Maggot Brain" }),
+      rec({ artist: "Funkadelic", album: "Maggot Brain" }),
+      rec({ artist: "Funkadelic", album: "Maggot Brain" }),
+    ];
+
+    const { ranked } = rankRecommendations(input);
+
+    expect(ranked[0].album).toBe("Silk Degrees");
+    expect(ranked[0].mentionCount).toBe(1); // still just 1 real comment...
+    expect(ranked[0].score).toBe(51); // ...but its score (1 + likes) outranks 3 unliked mentions
+    expect(ranked[1].album).toBe("Maggot Brain");
+    expect(ranked[1].score).toBe(3);
+  });
+
   it("collects distinct named songs for a ranked album", () => {
     const input: RecommendationInput[] = [
       rec({ artist: "Pink Floyd", album: "Dark Side of the Moon", song: "Time" }),

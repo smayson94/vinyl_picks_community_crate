@@ -12,7 +12,7 @@ import {
   refreshAccessToken,
 } from "../instagram/instagram-client.js";
 import { buildPlaylistDescription, playlistNameFor } from "./playlist-format.js";
-import { getCaptionOnlyAlbums, topUpTracks } from "./track-selection.js";
+import { getCaptionOnlyAlbums, selectTracksForVariety, topUpTracks } from "./track-selection.js";
 import { rankRecommendations, type RankedAlbum, type RecommendationInput } from "../ranking/rank.js";
 import { logger } from "../shared/logger.js";
 import {
@@ -157,6 +157,7 @@ function getRankedAlbums(reel: Reel) {
     album: r.album,
     song: r.song,
     is_ambiguous: !!r.is_ambiguous,
+    like_count: r.like_count,
   }));
   return rankRecommendations(asInput);
 }
@@ -174,12 +175,10 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
   );
   setReelStatus(reel.id, "RANKED");
 
-  let trackUris: string[] = [];
-  for (const album of ranked) {
-    if (trackUris.length >= MAX_PLAYLIST_TRACKS) break;
-    const uris = await resolveTrackUris(album);
-    trackUris.push(...uris);
-  }
+  let trackUris = await selectTracksForVariety(ranked, {
+    maxTracks: MAX_PLAYLIST_TRACKS,
+    resolveAlbum: (album, tracksPerAlbum) => resolveTrackUris(album, tracksPerAlbum),
+  });
 
   if (trackUris.length < MIN_PLAYLIST_TRACKS) {
     const rows = getRecommendationsForReel(reel.id);
@@ -225,12 +224,10 @@ async function ensureAppleMusicSynced(reel: Reel): Promise<Reel> {
 
   const { ranked } = getRankedAlbums(reel);
 
-  let songIds: string[] = [];
-  for (const album of ranked) {
-    if (songIds.length >= MAX_PLAYLIST_TRACKS) break;
-    const ids = await resolveAppleMusicSongIds(album);
-    songIds.push(...ids);
-  }
+  let songIds = await selectTracksForVariety(ranked, {
+    maxTracks: MAX_PLAYLIST_TRACKS,
+    resolveAlbum: (album, tracksPerAlbum) => resolveAppleMusicSongIds(album, tracksPerAlbum),
+  });
 
   if (songIds.length < MIN_PLAYLIST_TRACKS) {
     const rows = getRecommendationsForReel(reel.id);
