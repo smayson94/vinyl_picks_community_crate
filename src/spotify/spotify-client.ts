@@ -72,7 +72,7 @@ interface SpotifyAlbumTracksResponse {
 }
 
 interface SpotifySearchTracksResponse {
-  tracks: { items: { uri: string }[] };
+  tracks: { items: { uri: string; artists: { name: string }[] }[] };
 }
 
 /**
@@ -167,6 +167,22 @@ export async function resolveTrackUris(album: RankedAlbum, tracksPerAlbum: numbe
   }
 
   return uris;
+}
+
+/**
+ * Finds a track by this artist alone, with no album/song specified -- used to still highlight an
+ * artist mentioned by name repeatedly without any specific pick attached. A bare artist-name
+ * search's top relevance hits tend to be that artist's best-known songs, a reasonable stand-in for
+ * "one of their top tracks" now that Spotify's actual top-tracks endpoint is blocked for this app
+ * (403 -- Extended Quota Mode only, not available to a personal Development Mode app). Verified
+ * against the returned artist like every other search path here.
+ */
+export async function resolveArtistTopTrack(artistName: string): Promise<string | undefined> {
+  const result = await spotifyFetch<SpotifySearchTracksResponse>(
+    `/search?type=track&limit=5&q=${encodeURIComponent(artistName)}`
+  );
+  const match = result.tracks.items.find((t) => t.artists.some((a) => fuzzyEqual(a.name, artistName)));
+  return match?.uri;
 }
 
 interface SpotifyPlaylist {

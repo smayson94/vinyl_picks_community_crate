@@ -1,6 +1,10 @@
 import "../config/env.js";
 import { loadEnv } from "../config/env.js";
-import { getOrCreateLibraryPlaylist, resolveAppleMusicSongIds } from "../apple-music/apple-music-client.js";
+import {
+  getOrCreateLibraryPlaylist,
+  resolveAppleMusicSongIds,
+  resolveArtistTopSongId,
+} from "../apple-music/apple-music-client.js";
 import { extractCaptionTheme, parseComments } from "../comment-parser/openai-parser.js";
 import {
   extractCaptionPickLines,
@@ -13,12 +17,20 @@ import {
 } from "../instagram/instagram-client.js";
 import { buildPlaylistDescription, playlistNameFor } from "./playlist-format.js";
 import { writeReviewReport } from "./review-report.js";
-import { getCaptionOnlyAlbums, selectTracksForVariety, topUpTracks } from "./track-selection.js";
+import {
+  addArtistOnlyHighlights,
+  getArtistOnlyMentions,
+  getCaptionOnlyAlbums,
+  MAX_ARTIST_HIGHLIGHTS,
+  selectTracksForVariety,
+  topUpTracks,
+} from "./track-selection.js";
 import { rankRecommendations, type RankedAlbum, type RecommendationInput } from "../ranking/rank.js";
 import { logger } from "../shared/logger.js";
 import {
   getOrCreatePlaylist,
   replacePlaylistTracks,
+  resolveArtistTopTrack,
   resolveTrackUris,
   updatePlaylistDetails,
 } from "../spotify/spotify-client.js";
@@ -178,13 +190,24 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
   );
   setReelStatus(reel.id, "RANKED");
 
+  const rows = getRecommendationsForReel(reel.id);
+  const rankedArtists = ranked.map((a) => a.artist);
+  const artistHighlights = getArtistOnlyMentions(rows, rankedArtists).slice(0, MAX_ARTIST_HIGHLIGHTS);
+
+  // Reserve room for artist highlights up front -- otherwise a week with enough ranked albums to
+  // already fill the cap would leave no space for them by the time the highlight step runs.
   let trackUris = await selectTracksForVariety(ranked, {
-    maxTracks: MAX_PLAYLIST_TRACKS,
+    maxTracks: MAX_PLAYLIST_TRACKS - artistHighlights.length,
     resolveAlbum: (album, tracksPerAlbum) => resolveTrackUris(album, tracksPerAlbum),
   });
 
+  trackUris = await addArtistOnlyHighlights(trackUris, artistHighlights, {
+    maxTracks: MAX_PLAYLIST_TRACKS,
+    resolveArtist: resolveArtistTopTrack,
+    platformLabel: "Spotify",
+  });
+
   if (trackUris.length < MIN_PLAYLIST_TRACKS) {
-    const rows = getRecommendationsForReel(reel.id);
     const captionAlbums = getCaptionOnlyAlbums(rows);
     trackUris = await topUpTracks(trackUris, {
       targetCount: MIN_PLAYLIST_TRACKS,
@@ -236,13 +259,22 @@ async function ensureAppleMusicSynced(reel: Reel): Promise<Reel> {
 
   const { ranked } = getRankedAlbums(reel);
 
+  const rows = getRecommendationsForReel(reel.id);
+  const rankedArtists = ranked.map((a) => a.artist);
+  const artistHighlights = getArtistOnlyMentions(rows, rankedArtists).slice(0, MAX_ARTIST_HIGHLIGHTS);
+
   let songIds = await selectTracksForVariety(ranked, {
-    maxTracks: MAX_PLAYLIST_TRACKS,
+    maxTracks: MAX_PLAYLIST_TRACKS - artistHighlights.length,
     resolveAlbum: (album, tracksPerAlbum) => resolveAppleMusicSongIds(album, tracksPerAlbum),
   });
 
+  songIds = await addArtistOnlyHighlights(songIds, artistHighlights, {
+    maxTracks: MAX_PLAYLIST_TRACKS,
+    resolveArtist: resolveArtistTopSongId,
+    platformLabel: "Apple Music",
+  });
+
   if (songIds.length < MIN_PLAYLIST_TRACKS) {
-    const rows = getRecommendationsForReel(reel.id);
     const captionAlbums = getCaptionOnlyAlbums(rows);
     songIds = await topUpTracks(songIds, {
       targetCount: MIN_PLAYLIST_TRACKS,

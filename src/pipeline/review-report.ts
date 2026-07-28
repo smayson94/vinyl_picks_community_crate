@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { groupByFuzzyMatch } from "../ranking/dedupe.js";
+import { getArtistOnlyMentions, MAX_ARTIST_HIGHLIGHTS } from "./track-selection.js";
 import { getReel, getRecommendationsForReel, type Reel, type RecommendationRow } from "../storage/repository.js";
 
 const REPORTS_DIR = path.resolve(process.cwd(), "reports");
@@ -40,6 +41,7 @@ export function buildReviewReportHtml(reel: Reel, rows: RecommendationRow[]): st
   const ambiguousCount = rows.length - rows.filter((r) => !r.is_ambiguous && r.artist && r.album).length;
   const title = reel.theme ? `Community Crate — ${reel.theme}` : `Community Crate — Week of ${reel.posted_at}`;
   const dataJson = JSON.stringify(rows);
+  const artistHighlights = getArtistOnlyMentions(rows, ranked.map((r) => r.artist)).slice(0, MAX_ARTIST_HIGHLIGHTS);
 
   const rankRows = ranked
     .map(
@@ -53,6 +55,27 @@ export function buildReviewReportHtml(reel: Reel, rows: RecommendationRow[]): st
     </tr>`
     )
     .join("\n");
+
+  const highlightRows = artistHighlights
+    .map(
+      (h, i) => `<tr>
+      <td class="idx">${i + 1}</td>
+      <td class="field"><strong>${escapeHtml(h.artist)}</strong></td>
+      <td class="num">${h.score}</td>
+      <td class="num">${h.mentionCount}</td>
+    </tr>`
+    )
+    .join("\n");
+
+  const highlightsSection = artistHighlights.length
+    ? `<h2>Artist highlights <span class="subhead-inline">(mentioned without a specific album/song — one representative track gets added)</span></h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Artist</th><th>Score</th><th>Mentions</th></tr></thead>
+      <tbody>${highlightRows}</tbody>
+    </table>
+  </div>`
+    : "";
 
   return `<title>${escapeHtml(title)} — Review</title>
 <style>
@@ -79,6 +102,7 @@ export function buildReviewReportHtml(reel: Reel, rows: RecommendationRow[]): st
   .eyebrow { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 0.4rem; }
   h1 { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: clamp(1.7rem, 3.2vw, 2.5rem); font-weight: 600; margin: 0 0 0.3rem; text-wrap: balance; letter-spacing: -0.01em; }
   h2 { font-size: 1.05rem; font-weight: 600; margin: 2.5rem 0 0.75rem; }
+  .subhead-inline { font-size: 0.8rem; font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }
   .subhead { color: var(--muted); font-size: 0.95rem; margin: 0 0 1.75rem; }
   .stats { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
   .stat { background: var(--paper-raised); border: 1px solid var(--paper-line); border-radius: 10px; padding: 0.7rem 1.1rem; min-width: 8.5rem; }
@@ -137,6 +161,8 @@ export function buildReviewReportHtml(reel: Reel, rows: RecommendationRow[]): st
       <tbody>${rankRows}</tbody>
     </table>
   </div>
+
+  ${highlightsSection}
 
   <h2>All comments</h2>
   <div class="toolbar">

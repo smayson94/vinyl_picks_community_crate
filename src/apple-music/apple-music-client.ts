@@ -67,6 +67,11 @@ async function searchAlbumId(term: string, artistName: string): Promise<string |
   return match?.id;
 }
 
+/** Same "highlight an artist even without a specific pick" fallback as Spotify's resolveArtistTopTrack. */
+export async function resolveArtistTopSongId(artistName: string): Promise<string | undefined> {
+  return searchSongId(artistName, artistName);
+}
+
 interface AppleMusicAlbumTracksResponse {
   data: AppleMusicResource[];
 }

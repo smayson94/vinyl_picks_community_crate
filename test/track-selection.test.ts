@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getCaptionOnlyAlbums, selectTracksForVariety } from "../src/pipeline/track-selection.js";
+import {
+  addArtistOnlyHighlights,
+  getArtistOnlyMentions,
+  getCaptionOnlyAlbums,
+  selectTracksForVariety,
+} from "../src/pipeline/track-selection.js";
 import type { RankedAlbum } from "../src/ranking/rank.js";
 import type { RecommendationRow } from "../src/storage/repository.js";
 
@@ -60,6 +65,72 @@ describe("getCaptionOnlyAlbums", () => {
   it("returns an empty array when there are no caption picks", () => {
     const rows: RecommendationRow[] = [row({ username: "somefan", artist: "X", album: "Y" })];
     expect(getCaptionOnlyAlbums(rows)).toEqual([]);
+  });
+});
+
+describe("getArtistOnlyMentions", () => {
+  it("groups artist-only ambiguous mentions and excludes already-represented artists", () => {
+    const rows: RecommendationRow[] = [
+      row({ username: "a", artist: "St Paul and the Broken Bones", album: null, is_ambiguous: 1, like_count: 3 }),
+      row({ username: "b", artist: "St Paul & The Broken Bones", album: null, is_ambiguous: 1, like_count: 1 }),
+      row({ username: "c", artist: "Sturgill Simpson", album: "Metamodern Sounds", is_ambiguous: 0 }), // already resolved, not artist-only
+      row({ username: "d", artist: null, album: null, is_ambiguous: 1 }), // fully unresolved, no artist at all
+    ];
+
+    const highlights = getArtistOnlyMentions(rows, ["Sturgill Simpson"]);
+
+    expect(highlights).toHaveLength(1);
+    expect(highlights[0].artist).toBe("St Paul and the Broken Bones");
+    expect(highlights[0].mentionCount).toBe(2);
+    expect(highlights[0].score).toBe(1 + 3 + (1 + 1)); // 1+likes per mention
+  });
+
+  it("excludes an artist-only mention when that artist is already represented by a ranked album", () => {
+    const rows: RecommendationRow[] = [
+      row({ username: "a", artist: "Sturgill Simpson", album: null, is_ambiguous: 1 }),
+    ];
+
+    expect(getArtistOnlyMentions(rows, ["Sturgill Simpson"])).toEqual([]);
+  });
+
+  it("sorts by score, highest first", () => {
+    const rows: RecommendationRow[] = [
+      row({ username: "a", artist: "Artist Low", album: null, is_ambiguous: 1 }),
+      row({ username: "b", artist: "Artist High", album: null, is_ambiguous: 1, like_count: 10 }),
+    ];
+
+    const highlights = getArtistOnlyMentions(rows, []);
+    expect(highlights.map((h) => h.artist)).toEqual(["Artist High", "Artist Low"]);
+  });
+});
+
+describe("addArtistOnlyHighlights", () => {
+  it("resolves and appends a track per mention, respecting maxTracks", async () => {
+    const mentions = [
+      { artist: "Artist A", mentionCount: 2, score: 6 },
+      { artist: "Artist B", mentionCount: 1, score: 1 },
+    ];
+
+    const resolved = await addArtistOnlyHighlights(["existing-1"], mentions, {
+      maxTracks: 2,
+      resolveArtist: async (artist) => `${artist}-top`,
+      platformLabel: "Test",
+    });
+
+    // room for only 1 more (maxTracks: 2, already have 1) -- Artist A is listed first, so it wins
+    expect(resolved).toEqual(["existing-1", "Artist A-top"]);
+  });
+
+  it("skips a mention when resolution finds nothing", async () => {
+    const mentions = [{ artist: "Unfindable Artist", mentionCount: 1, score: 1 }];
+
+    const resolved = await addArtistOnlyHighlights([], mentions, {
+      maxTracks: 10,
+      resolveArtist: async () => undefined,
+      platformLabel: "Test",
+    });
+
+    expect(resolved).toEqual([]);
   });
 });
 
