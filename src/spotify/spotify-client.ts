@@ -88,30 +88,41 @@ export async function resolveTrackUris(album: RankedAlbum, tracksPerAlbum: numbe
 
   if (uris.length >= tracksPerAlbum) return uris.slice(0, tracksPerAlbum);
 
+  // Verified paths first (exact, then free-text-with-artist-check, then a model-corrected title
+  // retried through both) -- only fall through to the unverified album-title-only search as a
+  // genuine last resort. That search has no artist check at all, so trying it too early risks
+  // accepting a same-titled-but-wrong album (e.g. "Don't Ask" by Sonny Rollins vs. an unrelated
+  // "You Don't Gotta Ask" by a completely different artist) when a verified search further down
+  // the chain would have found the real one correctly.
   let albumId = await searchAlbumId(`album:${quoteForSearch(album.album)} artist:${quoteForSearch(album.artist)}`);
+
   if (!albumId) {
-    // Spotify sometimes credits an album to different/additional artists than the one a commenter
-    // named (e.g. a collaboration album credited primarily to the other artist) -- an album-title-only
-    // search still reliably finds the right record in that case.
-    albumId = await searchAlbumId(`album:${quoteForSearch(album.album)}`);
+    // Field-qualified search does near-exact string matching, fragile to even a single stray
+    // space or punctuation mark -- a plain free-text search is more forgiving, guarded by an
+    // artist-match check so an irrelevant top hit can't slip through.
+    albumId = await searchAlbumIdFreeText(album.album, album.artist);
+    if (albumId) logger.info(`Resolved "${album.album}" via free-text fallback search.`);
   }
+
   if (!albumId) {
     // A comment's spelling/punctuation of the title may not match the real release exactly (e.g.
     // "Wake Up It's Tomorrow" for the actual "Wake Up...It's Tomorrow") -- ask the model for the
-    // exact real title and retry once.
+    // exact real title and retry both verified paths once more.
     const corrected = await suggestCorrectedTitle("album", album.album, album.artist);
     if (corrected) {
       albumId = await searchAlbumId(`album:${quoteForSearch(corrected)} artist:${quoteForSearch(album.artist)}`);
-      if (!albumId) albumId = await searchAlbumId(`album:${quoteForSearch(corrected)}`);
+      if (!albumId) albumId = await searchAlbumIdFreeText(corrected, album.artist);
       if (albumId) logger.info(`Resolved "${album.album}" via corrected title "${corrected}".`);
     }
   }
+
   if (!albumId) {
-    // Last resort: field-qualified search does near-exact string matching, fragile to even a
-    // single stray space or punctuation mark -- a plain free-text search is more forgiving,
-    // guarded by an artist-match check so an irrelevant top hit can't slip through.
-    albumId = await searchAlbumIdFreeText(album.album, album.artist);
-    if (albumId) logger.info(`Resolved "${album.album}" via free-text fallback search.`);
+    // Last resort, unverified: Spotify sometimes credits an album to different/additional artists
+    // than the one a commenter named (e.g. a collaboration album credited primarily to the other
+    // artist), which an album-title-only search can still catch -- but with no way to verify the
+    // artist here, this is the least trustworthy path, tried only once everything safer has failed.
+    albumId = await searchAlbumId(`album:${quoteForSearch(album.album)}`);
+    if (albumId) logger.warn(`Resolved "${album.album}" via unverified album-title match — double check this one.`);
   }
 
   if (albumId) {
