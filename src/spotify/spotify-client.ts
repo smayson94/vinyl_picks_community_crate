@@ -7,8 +7,22 @@ import { getSpotifyAccessToken } from "./spotify-auth.js";
 
 const API_BASE = "https://api.spotify.com/v1";
 const TRACKS_PER_ALBUM = 2;
+const MAX_RATE_LIMIT_RETRIES = 3;
+const MAX_AUTO_RETRY_WAIT_SECONDS = 30;
 
-async function spotifyFetch<T>(pathAndQuery: string, init: RequestInit = {}): Promise<T> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * A single resolveTrackUris() call can burst through a dozen+ Spotify requests (search, album
+ * tracks, retries), so a rolling per-minute rate limit is something this app can trip on its own
+ * within one run -- observed live: retrying the whole pipeline minutes apart hit the identical
+ * request every time, which pointed to a self-inflicted burst limit rather than a slow-to-reset
+ * quota. Short waits (bounded by Retry-After, capped) are retried automatically; anything longer
+ * fails fast with a clear message instead of silently blocking for a long time.
+ */
+async function spotifyFetch<T>(pathAndQuery: string, init: RequestInit = {}, attempt = 0): Promise<T> {
   const accessToken = await getSpotifyAccessToken();
   const response = await fetch(`${API_BASE}${pathAndQuery}`, {
     ...init,
@@ -18,6 +32,26 @@ async function spotifyFetch<T>(pathAndQuery: string, init: RequestInit = {}): Pr
       "Content-Type": "application/json",
     },
   });
+
+  if (response.status === 429) {
+    const retryAfterHeader = response.headers.get("Retry-After");
+    const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : 2 ** (attempt + 1);
+
+    if (attempt < MAX_RATE_LIMIT_RETRIES && retryAfterSeconds <= MAX_AUTO_RETRY_WAIT_SECONDS) {
+      logger.warn(
+        `Spotify rate limit hit on ${pathAndQuery} — waiting ${retryAfterSeconds}s before retry ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES}.`
+      );
+      await sleep(retryAfterSeconds * 1000);
+      return spotifyFetch<T>(pathAndQuery, init, attempt + 1);
+    }
+
+    throw new Error(
+      `Spotify API ${pathAndQuery} rate limited (429)` +
+        (retryAfterHeader
+          ? ` — Retry-After ${retryAfterHeader}s is longer than this app auto-waits; re-run once that's passed.`
+          : " — no Retry-After given; this may be a longer Development Mode quota window, try again later.")
+    );
+  }
 
   if (!response.ok) {
     throw new Error(`Spotify API ${pathAndQuery} failed: ${response.status} ${await response.text()}`);
