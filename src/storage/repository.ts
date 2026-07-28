@@ -87,12 +87,14 @@ export function markCommentsFetched(id: string): void {
     .run(id);
 }
 
+/** Inserts new comments; for ones already seen, refreshes just their like_count (likes keep accruing after the fact). */
 export function insertComments(reelId: string, comments: RawComment[]): number {
   const db = getDb();
   const insert = db.prepare(
     `INSERT INTO recommendations (reel_id, ig_comment_id, username, comment_text, like_count)
      VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(ig_comment_id) DO NOTHING`
+     ON CONFLICT(ig_comment_id) DO UPDATE SET like_count = excluded.like_count
+     WHERE recommendations.like_count != excluded.like_count`
   );
   const insertMany = db.transaction((rows: RawComment[]) => {
     let count = 0;

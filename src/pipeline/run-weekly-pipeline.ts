@@ -126,7 +126,7 @@ async function ensureCommentsFetched(reel: Reel): Promise<Reel> {
 
     const inserted = insertComments(reel.id, [...comments, ...captionComments]);
     logger.info(
-      `Fetched ${comments.length} comment(s) + ${captionComments.length} caption pick(s) from Instagram for reel "${reel.id}" (${inserted} new).`
+      `Fetched ${comments.length} comment(s) + ${captionComments.length} caption pick(s) from Instagram for reel "${reel.id}" (${inserted} new or updated).`
     );
   }
   // else: comments assumed already imported via `npm run import:comments` (CSV fallback path).
