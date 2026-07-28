@@ -168,11 +168,18 @@ export async function getOrCreatePlaylist(name: string): Promise<string> {
   return created.id;
 }
 
-/** Updates a playlist's description (e.g. to credit the community and list this week's top picks). */
-export async function updatePlaylistDescription(playlistId: string, description: string): Promise<void> {
+/**
+ * Updates a playlist's name and/or description -- e.g. to credit the community and list this
+ * week's top picks, or to rename it when a re-run's theme extraction comes out differently
+ * (the model isn't perfectly deterministic run to run).
+ */
+export async function updatePlaylistDetails(
+  playlistId: string,
+  details: { name?: string; description?: string }
+): Promise<void> {
   await spotifyFetch(`/playlists/${playlistId}`, {
     method: "PUT",
-    body: JSON.stringify({ description }),
+    body: JSON.stringify(details),
   });
 }
 

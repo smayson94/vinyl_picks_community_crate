@@ -134,6 +134,13 @@ export function getRecommendationsForReel(reelId: string): RecommendationRow[] {
     .all(reelId) as RecommendationRow[];
 }
 
+export function getPlaylistIdForReel(reelId: string, platform: "spotify" | "apple_music"): string | undefined {
+  const row = getDb()
+    .prepare(`SELECT playlist_id FROM playlist_syncs WHERE reel_id = ? AND platform = ?`)
+    .get(reelId, platform) as { playlist_id: string } | undefined;
+  return row?.playlist_id;
+}
+
 export function recordPlaylistSync(
   reelId: string,
   platform: "spotify" | "apple_music",

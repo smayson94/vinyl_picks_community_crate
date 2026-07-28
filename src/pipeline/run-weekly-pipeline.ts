@@ -19,10 +19,11 @@ import {
   getOrCreatePlaylist,
   replacePlaylistTracks,
   resolveTrackUris,
-  updatePlaylistDescription,
+  updatePlaylistDetails,
 } from "../spotify/spotify-client.js";
 import {
   applyParsedRecommendations,
+  getPlaylistIdForReel,
   getRecommendationsForReel,
   getReel,
   getUnparsedComments,
@@ -199,10 +200,19 @@ async function ensureSpotifySynced(reel: Reel): Promise<Reel> {
     trackUris.length = MAX_PLAYLIST_TRACKS;
   }
 
+  // Prefer the playlist this reel is already known to use over a fresh name-based lookup --
+  // theme extraction isn't perfectly deterministic re-run to re-run, so a name-based search alone
+  // could create a second, orphaned playlist instead of updating the one already in use.
   const playlistName = playlistNameFor(reel);
-  const playlistId = await getOrCreatePlaylist(playlistName);
+  let playlistId = getPlaylistIdForReel(reel.id, "spotify");
+  if (playlistId) {
+    await updatePlaylistDetails(playlistId, { name: playlistName, description: buildPlaylistDescription(ranked) });
+  } else {
+    playlistId = await getOrCreatePlaylist(playlistName);
+    await updatePlaylistDetails(playlistId, { description: buildPlaylistDescription(ranked) });
+  }
+
   await replacePlaylistTracks(playlistId, trackUris);
-  await updatePlaylistDescription(playlistId, buildPlaylistDescription(ranked));
   recordPlaylistSync(reel.id, "spotify", playlistId, trackUris.length);
   logger.info(`Synced ${trackUris.length} track(s) to Spotify playlist "${playlistName}" (${playlistId}).`);
 
@@ -245,8 +255,10 @@ async function ensureAppleMusicSynced(reel: Reel): Promise<Reel> {
 
   if (songIds.length > MAX_PLAYLIST_TRACKS) songIds.length = MAX_PLAYLIST_TRACKS;
 
+  // As with Spotify, prefer the playlist this reel is already known to use over a fresh
+  // name-based lookup, since theme extraction can vary re-run to re-run.
   const playlistName = playlistNameFor(reel);
-  const playlistId = await getOrCreateLibraryPlaylist(playlistName, songIds);
+  const playlistId = getPlaylistIdForReel(reel.id, "apple_music") ?? (await getOrCreateLibraryPlaylist(playlistName, songIds));
   recordPlaylistSync(reel.id, "apple_music", playlistId, songIds.length);
   logger.info(`Synced ${songIds.length} track(s) to Apple Music playlist "${playlistName}" (${playlistId}).`);
 
